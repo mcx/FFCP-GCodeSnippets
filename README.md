@@ -23,6 +23,18 @@ This repository contains six things:
 You should never exceed 240°C for longer than a few minutes if you have not upgraded your hot-ends to all-metal. For PETG you should be able to get decent results at 240°C but I do recommend an all-metal hot-end with a pointy steel nozzle and higher temperatures to obtain good results with PETG. (For the best results, you also need variable fan speed to apply mild cooling.) I have included one example PETG filament profile (the one whose name does not end in `-fan`) that is safe to use on an unmodified FFCP, but don't expect nice-looking results with it on a stock extruder.
 
 
+## FlatPak misery (if you are using Linux)
+
+Prusa's decision to distribute PrusaSlicer in Linux through *FlatPak* has basically **broken the entire workflow** of automatically invoking `make_fcp_x3g.pl` as a post-processing script. You can still use the PrusaSlicer profiles and post-processing script(s) in Linux, but it will require more steps per 3D print.
+
+The problem is that PrusaSlicer now only has direct access to the limited environment inside its FlatPak container, which lacks Perl and also GPX. For the seamless workflow that used to Just Work™, the FlatPak would now need to run the script using a Perl runtime from *outside* the FlatPak container, but at the same time this runtime would need to read and write to the temporary g-code file *inside* the container, and then we also have the extra x3g file which will be lost. There is no sane solution to make this work. All my attempts have turned into dead-ends.
+
+Your options are, in increasing order of geek skill level:
+1. Forget about the automated workflow, do not configure the post-processing script in PrusaSlicer (consider `PATH` to be empty in the rest of this guide), and instead run it manually.
+2. Same as 1, but instead of manually running the script, use something like `inotifywait`, or Python's `watchdog`, to set up a simple script that reacts when you save a `.gcode` file in a certain directory, and then invokes the `make_fcp_x3g.pl` script on it. This will work as smoothly as before, but it will require some geekery.
+2. Compile PrusaSlicer yourself so it can be run outside of FlatPak. Most people will not even want to try this.
+
+
 # Installation and Setup Instructions
 
 If you have a question, please go through both [the companion webpage](https://www.dr-lex.be/software/ffcp-slic3r-profiles.html) and this README (again). I will most likely not answer any mails that ask something already clearly explained on any of those two pages. If you think parts of this README can be improved, the best thing you can do is provide the improved text, for instance by creating a new GitHub issue or maybe even a pull request, or just by sending the remarks through the contact page of [my website](https://www.dr-lex.be/).
@@ -32,7 +44,7 @@ If you are truly stuck and need to contact me, make sure to mention what operati
 
 ## Step 1: install the `make_fcp_x3g.pl` script
 
-This script can do many things, but its core functions are to apply an important workaround for a certain bug in PrusaSlicer, and then invoke the GPX program to convert the G-code produced by PrusaSlicer into x3g files that the printer understands. This script will be directly or indirectly configured as a *post-processing script* in PrusaSlicer to be run automatically after slicing. It will make your workflow easier.
+This script can do many things, but its core functions are to apply an important workaround for a certain bug in PrusaSlicer, and then invoke the GPX program to convert the G-code produced by PrusaSlicer into x3g files that the printer understands. This script will be directly or indirectly configured as a *post-processing script* in PrusaSlicer to be run automatically after slicing (unless you're doomed to use FlatPak). It will make your workflow easier.
 
 You can choose not to use this and do the GPX conversion and bug workarounds all manually and tediously. In that case, skip to step 2 below, but I recommend you do not.
 
@@ -54,8 +66,8 @@ The workflow depends on your operating system and how you want to run the script
 
 1. **You are running Linux or MacOS:** copy both `make_fcp_x3g` files (`.pl` and `.txt`) to a directory whose location will never change. A suitable location would be a ‘bin’ folder in your home directory where you might also store other personal executable files.<br>
 Open `make_fcp_x3g.txt` in a text editor and modify it according to its instructions. When done, ensure the `make_fcp_x3g.pl` file is executable (`chmod a+x make_fcp_x3g.pl`) and remember the **full absolute path** to where you placed it. This will be referred to as `PATH` below. (An easy way to obtain the absolute path in Mac OS and many recent Linux UIs, is to drag the file into a terminal window.)\
-   Try running the script in a terminal with `-c` argument to see whether you configured it correctly. In Linux, you may need to install the `File::Which` Perl module (Debian or Ubuntu package `libfile-which-perl`).\
-   You can now move to *step 2.*
+   Try running the script in a terminal with `-c` argument to see whether you configured it correctly. In Linux, you may need to install the `File::Which` Perl module (`sudo apt install libfile-which-perl` in Debian or Ubuntu; `sudo dnf install perl-File-Which` in Fedora and the like).\
+   You can now skip the rest of this chapter and move to *step 2.*
 2. **You use a Perl interpreter in Windows:** this is the easiest way to use the script in Windows. I recommend [Strawberry Perl](https://strawberryperl.com/). Copy both `make_fcp_x3g` files (`.pl` and `.txt`) to a directory whose location will never change, and where you have write permissions. A subdirectory of your user home folder is a good place (a Windows system directory is not).<br>
    Open `make_fcp_x3g.txt` in a text editor (I recommend [Notepad++](https://notepad-plus-plus.org/)). Modify it according to its instructions. When done, figure out the full paths to both the Perl executable and the `make_fcp_x3g.pl` script. To obtain what will be referred to as `PATH` below, put the `perl.exe` path between double quotes, followed by a space, then the script path between double quotes. For instance if you installed Strawberry Perl in its default location, then `PATH` would look like:\
    `"C:\Strawberry\perl\bin\perl.exe" "C:\path\to\make_fcp_x3g.pl"`\
@@ -78,7 +90,7 @@ Copy both `make_fcp_x3g` files (`.pl` and `.txt`) to the same location of your c
 When done, ensure both the script and gpx binary (if needed) are executable (`chmod a+x make_fcp_x3g.pl`).
 
 You should now run the script with `-c` argument to check whether it works. It is possible you will have to install the `File::Which` Perl module, which can be done in Ubuntu with:
-```
+```bash
 sudo apt install libfile-which-perl
 ```
 
@@ -112,10 +124,10 @@ In the folder **ConfigBundles** you will find two variations: most likely you wi
 You need to modify the .ini file before loading it into PrusaSlicer. The steps are described below, but I provide [a helper webpage that does everything for you](https://www.dr-lex.be/software/ffcp-slic3r-ini-helper.html). This page needs 2 things as input: the `PATH` value as described in the previous steps, and the appropriate config bundle ini file.
 
 Remember, `PATH` must be one of the following, as described in the previous steps:
-* if you are running PrusaSlicer in Linux or MacOS: the absolute UNIX-style path to the `make_fcp_x3g.pl` script;
+* if you are running PrusaSlicer in MacOS, or an older non-FlatPak PrusaSlicer in Linux: the absolute UNIX-style path to the `make_fcp_x3g.pl` script;
 * if you use a Perl interpreter in Windows: the absolute Windows-style paths to both `perl.exe` and the `make_fcp_x3g.pl` script, both between double quotes and with a space in between;
 * if you run `make_fcp_x3g.pl` inside WSL: the absolute Windows-style path to `slic3r_postprocess.bat`;
-* if you opted to skip step 1: nothing, empty (again, not recommended).
+* if you opted to skip step 1, or you are running a PrusaSlicer installed as FlatPak: *nothing, empty;* you will have to run the script manually or through some thing that is triggered when adding files to a folder.
 
 If you want to use the **bed 3D model and texture** from the `Bed_model` directory without having to configure them manually for each printer profile:
 1. Place the STL and PNG file somewhere on your computer's disk in a location that won't change.
